@@ -179,42 +179,45 @@ namespace Ryujinx.HLE.HOS.Services.Mii
 
             Result result = _filesystemClient.OpenFile(out FileHandle handle, DatabasePath, OpenMode.Read);
 
-            if (result.IsSuccess())
+            if (result == ResultFs.PathNotFound)
+            {
+                return (ResultCode)ForceSaveDatabase().Value;
+            }
+
+            if (result.IsFailure())
+            {
+                return ResultCode.Success;
+            }
+
+            try
             {
                 result = _filesystemClient.GetFileSize(out long fileSize, handle);
-                if (result.IsSuccess())
+                if (result.IsFailure()) return (ResultCode)result.Value;
+
+                if (fileSize == Unsafe.SizeOf<NintendoFigurineDatabase>())
                 {
-                    if (fileSize == Unsafe.SizeOf<NintendoFigurineDatabase>())
+                    result = _filesystemClient.ReadFile(handle, 0, _database.AsSpan());
+                    if (result.IsFailure()) return (ResultCode)result.Value;
+
+                    if (_database.Verify() != ResultCode.Success)
                     {
-                        result = _filesystemClient.ReadFile(handle, 0, _database.AsSpan());
+                        ResetDatabase();
 
-                        if (result.IsSuccess())
-                        {
-                            if (_database.Verify() != ResultCode.Success)
-                            {
-                                ResetDatabase();
-
-                                isBroken = true;
-                            }
-                            else
-                            {
-                                isBroken = _database.FixDatabase();
-                            }
-                        }
+                        isBroken = true;
                     }
                     else
                     {
-                        isBroken = true;
+                        isBroken = _database.FixDatabase();
                     }
                 }
-
-                _filesystemClient.CloseFile(handle);
-
-                return (ResultCode)result.Value;
+                else
+                {
+                    isBroken = true;
+                }
             }
-            else if (result == ResultFs.PathNotFound)
+            finally
             {
-                return (ResultCode)ForceSaveDatabase().Value;
+                _filesystemClient.CloseFile(handle);
             }
 
             return ResultCode.Success;
@@ -224,44 +227,39 @@ namespace Ryujinx.HLE.HOS.Services.Mii
         {
             Result result = _filesystemClient.CreateFile(DatabasePath, Unsafe.SizeOf<NintendoFigurineDatabase>());
 
-            if (result.IsSuccess() || result == ResultFs.PathAlreadyExists)
+            if (result.IsFailure() && result != ResultFs.PathAlreadyExists)
             {
-                result = _filesystemClient.OpenFile(out FileHandle handle, DatabasePath, OpenMode.Write);
+                return result;
+            }
 
-                if (result.IsSuccess())
+            result = _filesystemClient.OpenFile(out FileHandle handle, DatabasePath, OpenMode.Write);
+            if (result.IsFailure()) return result;
+
+            try
+            {
+                result = _filesystemClient.GetFileSize(out long fileSize, handle);
+                if (result.IsFailure()) return result;
+
+                // If the size doesn't match, recreate the file
+                if (fileSize != Unsafe.SizeOf<NintendoFigurineDatabase>())
                 {
-                    result = _filesystemClient.GetFileSize(out long fileSize, handle);
-
-                    if (result.IsSuccess())
-                    {
-                        // If the size doesn't match, recreate the file
-                        if (fileSize != Unsafe.SizeOf<NintendoFigurineDatabase>())
-                        {
-                            _filesystemClient.CloseFile(handle);
-
-                            result = _filesystemClient.DeleteFile(DatabasePath);
-
-                            if (result.IsSuccess())
-                            {
-                                result = _filesystemClient.CreateFile(DatabasePath, Unsafe.SizeOf<NintendoFigurineDatabase>());
-
-                                if (result.IsSuccess())
-                                {
-                                    result = _filesystemClient.OpenFile(out handle, DatabasePath, OpenMode.Write);
-                                }
-                            }
-
-                            if (result.IsFailure())
-                            {
-                                return result;
-                            }
-                        }
-
-                        result = _filesystemClient.WriteFile(handle, 0, _database.AsReadOnlySpan(), WriteOption.Flush);
-                    }
-
                     _filesystemClient.CloseFile(handle);
+
+                    result = _filesystemClient.DeleteFile(DatabasePath);
+                    if (result.IsFailure()) return result;
+
+                    result = _filesystemClient.CreateFile(DatabasePath, Unsafe.SizeOf<NintendoFigurineDatabase>());
+                    if (result.IsFailure()) return result;
+
+                    result = _filesystemClient.OpenFile(out handle, DatabasePath, OpenMode.Write);
+                    if (result.IsFailure()) return result;
                 }
+
+                result = _filesystemClient.WriteFile(handle, 0, _database.AsReadOnlySpan(), WriteOption.Flush);
+            }
+            finally
+            {
+                _filesystemClient.CloseFile(handle);
             }
 
             if (result.IsSuccess())
@@ -279,7 +277,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii
             return new DatabaseSessionMetadata(UpdateCounter, miiKeyCode);
         }
 
-        public void SetInterfaceVersion(DatabaseSessionMetadata metadata, uint interfaceVersion)
+        public void SetInterfaceVersion(DatabaseSessionMetadata metadata, int interfaceVersion)
         {
             metadata.InterfaceVersion = interfaceVersion;
         }
@@ -386,26 +384,26 @@ namespace Ryujinx.HLE.HOS.Services.Mii
                 }
             }
 
-            if (_database.GetIndexByCreatorId(out int oldIndex, createId))
+            if (!_database.GetIndexByCreatorId(out int oldIndex, createId))
             {
-                StoreData realStoreData = _database.Get(oldIndex);
-
-                if (!metadata.MiiKeyCode.IsEnabledSpecialMii() && realStoreData.IsSpecial())
-                {
-                    return ResultCode.InvalidOperationOnSpecialMii;
-                }
-
-                ResultCode result = _database.Move(newIndex, oldIndex);
-
-                if (result == ResultCode.Success)
-                {
-                    MarkDirty(metadata);
-                }
-
-                return result;
+                return ResultCode.NotFound;
             }
 
-            return ResultCode.NotFound;
+            StoreData realStoreData = _database.Get(oldIndex);
+
+            if (!metadata.MiiKeyCode.IsEnabledSpecialMii() && realStoreData.IsSpecial())
+            {
+                return ResultCode.InvalidOperationOnSpecialMii;
+            }
+
+            ResultCode result = _database.Move(newIndex, oldIndex);
+
+            if (result == ResultCode.Success)
+            {
+                MarkDirty(metadata);
+            }
+
+            return result;
         }
 
         public ResultCode AddOrReplace(DatabaseSessionMetadata metadata, StoreData storeData)
@@ -415,35 +413,37 @@ namespace Ryujinx.HLE.HOS.Services.Mii
                 return ResultCode.InvalidStoreData;
             }
 
-            if (!metadata.MiiKeyCode.IsEnabledSpecialMii() && !storeData.IsSpecial())
+            if (!metadata.MiiKeyCode.IsEnabledSpecialMii() && storeData.IsSpecial())
             {
-                if (_database.GetIndexByCreatorId(out int index, storeData.CreateId))
-                {
-                    StoreData oldStoreData = _database.Get(index);
-
-                    if (oldStoreData.IsSpecial())
-                    {
-                        return ResultCode.InvalidOperationOnSpecialMii;
-                    }
-
-                    _database.Replace(index, storeData);
-                }
-                else
-                {
-                    if (_database.IsFull())
-                    {
-                        return ResultCode.DatabaseFull;
-                    }
-
-                    _database.Add(storeData);
-                }
-
-                MarkDirty(metadata);
-
-                return ResultCode.Success;
+                return ResultCode.InvalidOperationOnSpecialMii;
             }
 
-            return ResultCode.InvalidOperationOnSpecialMii;
+            if (_database.GetIndexByCreatorId(out int index, storeData.CreateId))
+            {
+                StoreData oldStoreData = _database.Get(index);
+
+                // The new Mii must be the same type as the old Mii
+                if (oldStoreData.IsSpecial() != storeData.IsSpecial())
+                {
+                    return ResultCode.InvalidOperationOnSpecialMii;
+                }
+
+                _database.Replace(index, storeData);
+            }
+            else
+            {
+                if (_database.IsFull())
+                {
+                    return ResultCode.DatabaseFull;
+                }
+
+                _database.Add(storeData);
+            }
+
+            MarkDirty(metadata);
+
+            return ResultCode.Success;
+
         }
 
         public ResultCode Delete(DatabaseSessionMetadata metadata, CreateId createId)

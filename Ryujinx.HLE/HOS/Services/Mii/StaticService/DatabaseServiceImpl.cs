@@ -243,7 +243,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
             return _database.GetIndex(_metadata, charInfo, out index);
         }
 
-        protected override void SetInterfaceVersion(uint interfaceVersion)
+        protected override void SetInterfaceVersion(int interfaceVersion)
         {
             _database.SetInterfaceVersion(_metadata, interfaceVersion);
         }

@@ -4,7 +4,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii
 {
     class DatabaseSessionMetadata
     {
-        public uint  InterfaceVersion;
+        public int  InterfaceVersion;
         public ulong UpdateCounter;
 
         public SpecialMiiKeyCode MiiKeyCode { get; private set; }
@@ -16,7 +16,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii
             MiiKeyCode       = miiKeyCode;
         }
 
-        public bool IsInterfaceVersionSupported(uint interfaceVersion)
+        public bool IsInterfaceVersionSupported(int interfaceVersion)
         {
             return InterfaceVersion >= interfaceVersion;
         }

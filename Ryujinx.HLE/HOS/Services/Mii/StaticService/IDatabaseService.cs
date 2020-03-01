@@ -294,7 +294,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
         // SetInterfaceVersion(u32 version)
         public ResultCode SetInterfaceVersion(ServiceCtx context)
         {
-            uint interfaceVersion = context.RequestData.ReadUInt32();
+            int interfaceVersion = context.RequestData.ReadInt32();
 
             SetInterfaceVersion(interfaceVersion);
 
@@ -412,7 +412,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii.StaticService
 
         protected abstract ResultCode GetIndex(CharInfo charInfo, out int index);
 
-        protected abstract void SetInterfaceVersion(uint interfaceVersion);
+        protected abstract void SetInterfaceVersion(int interfaceVersion);
 
         protected abstract ResultCode Convert(Ver3StoreData ver3StoreData, out CharInfo charInfo);
 

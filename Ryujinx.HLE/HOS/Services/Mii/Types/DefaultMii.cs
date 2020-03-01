@@ -73,11 +73,11 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
         // The first 2 Mii in the default table are used as base for Male/Female in editor but not exposed via IPC.
         public static int TableLength => _fromIndex.Length;
 
-        private static readonly int[] _fromIndex = new int[] { 2, 3, 4, 5, 6, 7 };
+        private static ReadOnlySpan<byte> _fromIndex => new byte[] { 2, 3, 4, 5, 6, 7 };
 
         public static DefaultMii GetDefaultMii(uint index)
         {
-            return Table[_fromIndex[index]];
+            return Table[_fromIndex[(int)index]];
         }
 
         #region "Raw Table Array"

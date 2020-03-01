@@ -391,7 +391,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
 
             if (gender == Types.Gender.All)
             {
-                gender = (Gender)utilImpl.GetRandom((int)gender);
+                gender = (Gender)utilImpl.GetRandom(2);
             }
 
             if (age == Age.All)

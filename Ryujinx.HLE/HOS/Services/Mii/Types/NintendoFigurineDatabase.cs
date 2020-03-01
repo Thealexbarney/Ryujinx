@@ -1,5 +1,6 @@
 ﻿using Ryujinx.Common.Utilities;
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -96,6 +97,8 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
 
         public void Replace(int index, StoreData storeData)
         {
+            Debug.Assert((uint)index < MaxMii);
+
             Figurines[index] = storeData;
 
             UpdateCrc();
@@ -103,11 +106,15 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
 
         public void Add(StoreData storeData)
         {
+            Debug.Assert(!IsFull());
+
             Replace(_figurineCount++, storeData);
         }
 
         public void Delete(int index)
         {
+            Debug.Assert((uint)index < MaxMii);
+
             int newCount = _figurineCount - 1;
 
             // If this isn't the only element in the list, move the data in it.
@@ -136,6 +143,7 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
 
                 if (!figurine.IsValid())
                 {
+                    // If only the device crc is invalid, fix it (This allows importing arbitrary databases into Ryujinx)
                     if (AcceptInvalidDeviceCrc && figurine.CoreData.IsValid() && figurine.IsValidDataCrc())
                     {
                         figurine.UpdateCrc();
@@ -204,12 +212,11 @@ namespace Ryujinx.HLE.HOS.Services.Mii.Types
 
         public void Format()
         {
+            this = new NintendoFigurineDatabase();
+
             _magic         = DatabaseMagic;
             _version       = CurrentVersion;
             _figurineCount = 0;
-
-            // Fill with empty data
-            Figurines.Fill(new StoreData());
 
             UpdateCrc();
         }
